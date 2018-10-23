@@ -43,13 +43,15 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self._fuse_linear_g = torch.nn.Linear(in_features=4 * self._encoding_dim, out_features=self._encoding_dim)
         self._fuse_tanh = torch.nn.Tanh()
         self._fuse_sigmoid = torch.nn.Sigmoid()
+        self._fuse_linear_d = torch.nn.Linear(in_features=4 * self._passage_self_attention.get_output_dim(),
+                                              out_features=self._passage_self_attention.get_output_dim())
 
         self._passage_self_attention = passage_self_attention
         self._question_self_attention = question_self_attention
         self._passage_matrix_attention = passage_matrix_attention
-        self._passage_matrix_attention_softmax = torch.nn.Softmax(dim=0)
+        self._passage_matrix_attention_softmax = torch.nn.Softmax(dim=1)
 
-        self._w1 = Parameter(torch.Tensor(self._passage_self_attention.get_output_dim(),))
+        self._w1 = Parameter(torch.Tensor(self._passage_self_attention.get_output_dim(), ))
 
         self._span_start_accuracy = CategoricalAccuracy()
         self._span_end_accuracy = CategoricalAccuracy()
@@ -71,6 +73,7 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         embedded_passage = self._text_field_embedder(passage)
 
         ## TODO:mask
+        batch_size = embedded_passage.size(0)
         # Shape(batch_size, question_length, encoding_dim)
         u_q = self._question_bilstm_encoder(embedded_question)
         # Shape(batch_size, passage_length, encoding_dim)
@@ -96,5 +99,9 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
             (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_g(q_p_))), u_q.permute(0, 2, 1))
         d = self._passage_self_attention(pp)
         l = self._passage_matrix_attention(d, d)
-
-
+        tmp = l.size(1)
+        l = self._passage_matrix_attention_softmax(l.view(batch_size, -1)).view(batch_size, tmp, -1)
+        d_ = torch.mm(l, d)
+        # simple fuse function
+        d_d_ = torch.cat((d, d_, d * d_, d - d_), 2)
+        dd = self._fuse_tanh(self._fuse_linear_d(d_d_))
