@@ -1,11 +1,13 @@
 import logging
 import torch
+from torch.nn.parameter import Parameter
 from torch.nn.functional import nll_loss
 from typing import Optional, Dict, List, Any
 
 from allennlp.models.model import Model
 from allennlp.data import Vocabulary
 from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder, FeedForward
+from allennlp.modules.matrix_attention.bilinear_matrix_attention import BilinearMatrixAttention
 from allennlp.nn import RegularizerApplicator, InitializerApplicator
 from allennlp.training.metrics import CategoricalAccuracy, BooleanAccuracy
 
@@ -19,6 +21,9 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                  text_field_embedder: TextFieldEmbedder,
                  passage_bilstm_encoder: Seq2SeqEncoder,
                  question_bilstm_encoder: Seq2SeqEncoder,
+                 passage_self_attention: Seq2SeqEncoder,
+                 question_self_attention: Seq2SeqEncoder,
+                 passage_matrix_attention: BilinearMatrixAttention,
                  dropout: float = 0.2,
                  regularizer: Optional[RegularizerApplicator] = None,
                  initializer: InitializerApplicator = InitializerApplicator(),
@@ -38,6 +43,13 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self._fuse_linear_g = torch.nn.Linear(in_features=4 * self._encoding_dim, out_features=self._encoding_dim)
         self._fuse_tanh = torch.nn.Tanh()
         self._fuse_sigmoid = torch.nn.Sigmoid()
+
+        self._passage_self_attention = passage_self_attention
+        self._question_self_attention = question_self_attention
+        self._passage_matrix_attention = passage_matrix_attention
+        self._passage_matrix_attention_softmax = torch.nn.Softmax(dim=0)
+
+        self._w1 = Parameter(torch.Tensor(self._passage_self_attention.get_output_dim(),))
 
         self._span_start_accuracy = CategoricalAccuracy()
         self._span_end_accuracy = CategoricalAccuracy()
@@ -70,7 +82,9 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         q_ = torch.mm(self._softmax_d1(s), u_q)
         # Shape(batch_size, question_length, encoding_dim)
         p_ = torch.mm(self._softmax_d2(s), u_p)
+        # Shape(batch_size, passage_length, 4 * encoding_dim)
         p_q_ = torch.cat((u_p, q_, u_p * q_, u_p - q_), 2)
+        # Shape(batch_size, question_length, 4 * encoding_dim)
         q_p_ = torch.cat((u_q, p_, u_q * p_, u_q - p_), 2)
         # Shape(batch_size, passage_length, passage_length)
         pp = torch.mm(self._fuse_sigmoid(self._fuse_linear_g(p_q_)),
@@ -80,3 +94,7 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         qq = torch.mm(self._fuse_sigmoid(self._fuse_linear_g(q_p_)),
                       self._fuse_tanh(self._fuse_linear_m(q_p_)).permute(0, 2, 1)) + torch.mm(
             (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_g(q_p_))), u_q.permute(0, 2, 1))
+        d = self._passage_self_attention(pp)
+        l = self._passage_matrix_attention(d, d)
+
+
