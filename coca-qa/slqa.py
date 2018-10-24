@@ -25,14 +25,14 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
 
     def __init__(self, vocab: Vocabulary,
                  text_field_embedder: TextFieldEmbedder,
-                 num_highway_layers: int,
-                 phrase_layer: Seq2SeqEncoder,
+                 # num_highway_layers: int,
+                 # phrase_layer: Seq2SeqEncoder,
                  passage_bilstm_encoder: Seq2SeqEncoder,
                  question_bilstm_encoder: Seq2SeqEncoder,
-                 passage_self_attention: Seq2SeqEncoder,
+                 passage_self_attention: LSTM,
                  passage_matrix_attention: BilinearMatrixAttention,
-                 semantic_rep_layer: Seq2SeqEncoder,
-                 contextual_question_layer: Seq2SeqEncoder,
+                 semantic_rep_layer: LSTM,
+                 contextual_question_layer: LSTM,
                  dropout: float = 0.2,
                  mask_lstms: bool = True,
                  regularizer: Optional[RegularizerApplicator] = None,
@@ -41,9 +41,9 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
 
         super(MultiGranularityHierarchicalAttentionFusionNetworks, self).__init__(vocab, regularizer)
         self._text_field_embedder = text_field_embedder
-        self._phrase_layer = phrase_layer
-        self._highway_layer = TimeDistributed(Highway(text_field_embedder.get_output_dim(),
-                                                      num_highway_layers))
+        # self._phrase_layer = phrase_layer
+        # self._highway_layer = TimeDistributed(Highway(text_field_embedder.get_output_dim(),
+        #                                               num_highway_layers))
         self._passage_bilstm_encoder = passage_bilstm_encoder
         self._question_bilstm_encoder = question_bilstm_encoder
         self._encoding_dim = self._passage_bilstm_encoder.get_output_dim()
@@ -61,19 +61,26 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self._passage_matrix_attention = passage_matrix_attention
         self._passage_matrix_attention_softmax = torch.nn.Softmax(dim=1)
 
-        self._fuse_linear_d = torch.nn.Linear(in_features=4 * self._passage_self_attention.get_output_dim(),
-                                              out_features=self._passage_self_attention.get_output_dim())
-        self._fuse_linear_dg = torch.nn.Linear(in_features=4 * self._passage_self_attention.get_output_dim(),
-                                               out_features=self._passage_self_attention.get_output_dim())
+        # self._fuse_linear_d = torch.nn.Linear(in_features=4 * self._passage_self_attention.get_output_dim(),
+        #                                       out_features=self._passage_self_attention.get_output_dim())
+        # self._fuse_linear_dg = torch.nn.Linear(in_features=4 * self._passage_self_attention.get_output_dim(),
+        #                                        out_features=self._passage_self_attention.get_output_dim())
 
-        self._w1 = Parameter(torch.Tensor(self._passage_self_attention.get_output_dim(), ))
+        self._fuse_linear_d = torch.nn.Linear(in_features=4 * self._encoding_dim,
+                                              out_features=self._encoding_dim)
+        self._fuse_linear_dg = torch.nn.Linear(in_features=4 * self._encoding_dim,
+                                               out_features=self._encoding_dim)
 
         self._semantic_rep_layer = semantic_rep_layer
         self._contextual_question_layer = contextual_question_layer
 
-        self._vector_linear = VectorLinear(self._contextual_question_layer.get_output_dim(), use_bias=False)
-        self._vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim(),
-                                                          self._semantic_rep_layer.get_output_dim())
+        # self._vector_linear = VectorLinear(self._contextual_question_layer.get_output_dim(), use_bias=False)
+        # self._vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim(),
+        #                                                   self._semantic_rep_layer.get_output_dim())
+
+        self._vector_linear = VectorLinear(self._encoding_dim, use_bias=False)
+        self._vector_matrix_bilinear = VectorMatrixLinear(self._encoding_dim,
+                                                          self._encoding_dim)
 
         self._span_start_accuracy = CategoricalAccuracy()
         self._span_end_accuracy = CategoricalAccuracy()
@@ -92,9 +99,11 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                 span_start: torch.IntTensor = None, span_end: torch.IntTensor = None,
                 metadata: List[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
 
-        embedded_question = self._highway_layer(self._text_field_embedder(question))
+        # embedded_question = self._highway_layer(self._text_field_embedder(question))
+        embedded_question = self._text_field_embedder(question)
         question_mask = util.get_text_field_mask(question).float()
-        embedded_passage = self._highway_layer(self._text_field_embedder(passage))
+        # embedded_passage = self._highway_layer(self._text_field_embedder(passage))
+        embedded_passage = self._text_field_embedder(passage)
         passage_mask = util.get_text_field_mask(passage).float()
 
         batch_size = embedded_passage.size(0)
