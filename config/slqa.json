@@ -86,7 +86,7 @@
       "dropout": 0.2
     },
     "passage_self_attention":{
-//      "type": "lstm",
+      "type": "lstm",
       "bidirectional": true,
       "input_size": 100,
       "hidden_size": 100,
@@ -98,7 +98,7 @@
       "matrix_2_dim": "100"
     },
     "semantic_rep_layer":{
-//      "type": "lstm",
+      "type": "lstm",
       "bidirectional": true,
       "input_size": 100,
       "hidden_size": 100,
@@ -106,7 +106,7 @@
       "dropout": 0.2
     },
     "contextual_question_layer":{
-//      "type": "lstm",
+      "type": "lstm",
       "bidirectional": true,
       "input_size": 100,
       "hidden_size": 100,
