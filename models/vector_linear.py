@@ -15,10 +15,10 @@ class VectorLinear(nn.Module):
         self._use_bias = use_bias
         if use_bias:
             self.bias = Parameter(torch.Tensor(1))
-        self._sigmoid = torch.nn.Sigmoid()
+        self._softmax = torch.nn.Softmax(dim=-1)
 
-    def forward(self, input):
+    def forward(self, tensor: torch.Tensor):
         if self._use_bias:
-            return self._sigmoid(torch.mm(input, self._weight_vector) + self.bias)
+            return self._softmax(torch.mm(tensor, self._weight_vector) + self.bias)
         else:
-            return self._sigmoid(torch.mm(input, self._weight_vector))
+            return self._softmax(torch.mm(tensor, self._weight_vector))
