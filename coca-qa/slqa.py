@@ -50,6 +50,8 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self._fuse_sigmoid = torch.nn.Sigmoid()
         self._fuse_linear_d = torch.nn.Linear(in_features=4 * self._passage_self_attention.get_output_dim(),
                                               out_features=self._passage_self_attention.get_output_dim())
+        self._fuse_linear_dg = torch.nn.Linear(in_features=4 * self._passage_self_attention.get_output_dim(),
+                                               out_features=self._passage_self_attention.get_output_dim())
 
         self._passage_self_attention = passage_self_attention
         self._question_self_attention = question_self_attention
@@ -62,7 +64,8 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self._contextual_question_layer = contextual_question_layer
 
         self._vector_linear = VectorLinear(self._contextual_question_layer.get_output_dim())
-        self._vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim())
+        self._vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim(),
+                                                          self._semantic_rep_layer.get_output_dim())
 
         self._span_start_accuracy = CategoricalAccuracy()
         self._span_end_accuracy = CategoricalAccuracy()
@@ -122,7 +125,10 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         d_ = torch.mm(l, d)
         # simple fuse function
         d_d_ = torch.cat((d, d_, d * d_, d - d_), 2)
-        dd = self._fuse_tanh(self._fuse_linear_d(d_d_))
+        # Shape(batch_size, passage_length, passage_length)
+        dd = torch.mm(self._fuse_sigmoid(self._fuse_linear_dg(d_d_)),
+                      self._fuse_tanh(self._fuse_linear_d(d_d_)).permute(0, 2, 1)) + torch.mm(
+            (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_dg(d_d_))), d.permute(0, 2, 1))
         # Shape(batch_size, passage_length, encoding_dim_2)
         ddd = self._semantic_rep_layer(dd)
         # Shape(batch_size, question_length, question_length)
@@ -133,6 +139,6 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         vec_q = vector_weight_sum(gamma, qqq)
 
         # model & output layer
-        # Shape(batch_size, 1, encoding_dim_2)
-        p_start = self._vector_matrix_bilinear(vec_q, ddd)
-        p_end = self._vector_matrix_bilinear(vec_q, ddd)
+        # Shape(batch_size, 1, passage_length)
+        p_start = self._vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
+        p_end = self._vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
