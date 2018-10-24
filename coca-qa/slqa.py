@@ -1,5 +1,6 @@
 import logging
 import torch
+from torch.nn import LSTM
 from torch.nn.parameter import Parameter
 from torch.nn.functional import cross_entropy
 from typing import Optional, Dict, List, Any
@@ -91,24 +92,24 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                 span_start: torch.IntTensor = None, span_end: torch.IntTensor = None,
                 metadata: List[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
 
-        emb_question = self._highway_layer(self._text_field_embedder(question))
+        embedded_question = self._highway_layer(self._text_field_embedder(question))
         question_mask = util.get_text_field_mask(question).float()
-        emb_passage = self._highway_layer(self._text_field_embedder(passage))
+        embedded_passage = self._highway_layer(self._text_field_embedder(passage))
         passage_mask = util.get_text_field_mask(passage).float()
 
-        batch_size = emb_passage.size(0)
-        passage_length = emb_passage.size(1)
+        batch_size = embedded_passage.size(0)
+        passage_length = embedded_passage.size(1)
 
         question_lstm_mask = question_mask if self._mask_lstms else None
         passage_lstm_mask = passage_mask if self._mask_lstms else None
-        embedded_question = self._dropout(self._phrase_layer(emb_question, question_lstm_mask))
-        embedded_passage = self._dropout(self._phrase_layer(emb_passage, passage_lstm_mask))
+        # embedded_question = self._dropout(self._phrase_layer(emb_question, question_lstm_mask))
+        # embedded_passage = self._dropout(self._phrase_layer(emb_passage, passage_lstm_mask))
         # encoding_dim = encoded_question.size(-1)
 
         # Shape(batch_size, question_length, encoding_dim)
-        u_q = self._question_bilstm_encoder(embedded_question)
+        u_q = self._dropout(self._question_bilstm_encoder(embedded_question, question_lstm_mask))
         # Shape(batch_size, passage_length, encoding_dim)
-        u_p = self._passage_bilstm_encoder(embedded_passage)
+        u_p = self._dropout(self._passage_bilstm_encoder(embedded_passage, passage_lstm_mask))
         # Shape(batch_size, question_length, passage_length)
         s = torch.mm(self._linear_activate(self._atten_linear_layer(u_q)), self._linear_activate(
             self._atten_linear_layer(u_p)).permute(0, 2, 1))
@@ -133,7 +134,7 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                        self._fuse_tanh(self._fuse_linear_m(q_p_))) + torch.mul(
             (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_g(q_p_))), u_q)
         # Shape(batch_size, passage_length, encoding_dim_1)
-        d = self._passage_self_attention(pp)
+        d = self._passage_self_attention(pp, None)
         # Shape(batch_size, passage_length, passage_length)
         l = self._passage_matrix_attention(d, d)
         tmp = l.size(1)
@@ -147,9 +148,9 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                        self._fuse_tanh(self._fuse_linear_d(d_d_))) + torch.mul(
             (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_dg(d_d_))), d)
         # Shape(batch_size, passage_length, encoding_dim_2)
-        ddd = self._semantic_rep_layer(dd)
+        ddd = self._semantic_rep_layer(dd, None)
         # Shape(batch_size, question_length, encoding_dim_3)
-        qqq = self._contextual_question_layer(qq)
+        qqq = self._contextual_question_layer(qq, None)
         # Shape(batch_size, question_length, 1)
         gamma = self._vector_linear(qqq)
         # Shape(batch_size, question_length)
