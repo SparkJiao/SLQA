@@ -16,5 +16,6 @@ class VectorMatrixLinear(nn.Module):
         assert vector.size(0) == matrix.size(0)
         vector = vector.view(batch_size, 1, -1)
         output = torch.mm(torch.mm(vector, self._weight_vector), matrix)
+        output = self._softmax(output)
         return output
 

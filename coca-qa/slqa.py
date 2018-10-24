@@ -10,7 +10,7 @@ from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder, FeedForward
 from allennlp.modules.matrix_attention.bilinear_matrix_attention import BilinearMatrixAttention
 from allennlp.nn import RegularizerApplicator, InitializerApplicator
 from allennlp.training.metrics import CategoricalAccuracy, BooleanAccuracy
-
+from models.vector_matrix_bilinear import VectorMatrixLinear
 from models.vector_linear import VectorLinear
 from utils.vector_weight_sum import vector_weight_sum_matrix, vector_weight_sum
 
@@ -62,6 +62,7 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self._contextual_question_layer = contextual_question_layer
 
         self._vector_linear = VectorLinear(self._contextual_question_layer.get_output_dim())
+        self._vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim())
 
         self._span_start_accuracy = CategoricalAccuracy()
         self._span_end_accuracy = CategoricalAccuracy()
@@ -132,4 +133,6 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         vec_q = vector_weight_sum(gamma, qqq)
 
         # model & output layer
-
+        # Shape(batch_size, 1, encoding_dim_2)
+        p_start = self._vector_matrix_bilinear(vec_q, ddd)
+        p_end = self._vector_matrix_bilinear(vec_q, ddd)
