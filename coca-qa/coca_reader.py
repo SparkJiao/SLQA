@@ -116,12 +116,12 @@ class CocaQAReader(DatasetReader):
 
                 his_paragraph = paragraph
                 his_question = question_text
-                if ind > 1:
-                    his_paragraph = his_paragraph + " " + str(history[ind - 1][1])
-                    his_question = str(history[ind - 1][0]) + " " + his_question
-                    if ind > 2:
-                        his_paragraph = his_paragraph + " " + str(history[ind - 2][1])
-                        his_question = str(history[ind - 2][0]) + " " + his_question
+                # if ind > 1:
+                #     his_paragraph = his_paragraph + " " + str(history[ind - 1][1])
+                #     his_question = str(history[ind - 1][0]) + " " + his_question
+                #     if ind > 2:
+                #         his_paragraph = his_paragraph + " " + str(history[ind - 2][1])
+                #         his_question = str(history[ind - 2][0]) + " " + his_question
                 his_tokenized_paragraph = self._tokenizer.tokenize(his_paragraph)
 
                 ind += 1

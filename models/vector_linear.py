@@ -6,6 +6,7 @@ from torch.nn import Parameter
 class VectorLinear(nn.Module):
 
     def __init__(self, in_features, use_bias=True):
+        super(VectorLinear, self).__init__()
         # y = X * w^T + b
         # shape of x: n * in_features
         # shape of w: 1 * in_features

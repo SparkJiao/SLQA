@@ -60,8 +60,8 @@
         }
       }
     },
-//    "num_highway_layers": 2,
-    "passage_bilstm_encoder": {
+    "num_highway_layers": 2,
+    "phrase_layer": {
       "type": "lstm",
       "bidirectional": true,
       "input_size": 1224,
@@ -69,10 +69,18 @@
       "num_layers": 1,
       "dropout": 0.2
     },
+    "passage_bilstm_encoder": {
+      "type": "lstm",
+      "bidirectional": true,
+      "input_size": 100,
+      "hidden_size": 100,
+      "num_layers": 1,
+      "dropout": 0.2
+    },
     "question_bilstm_encoder": {
       "type": "lstm",
       "bidirectional": true,
-      "input_size": 1224,
+      "input_size": 100,
       "hidden_size": 100,
       "num_layers": 1,
       "dropout": 0.2

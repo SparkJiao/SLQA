@@ -6,6 +6,7 @@ from torch.nn import Parameter
 class VectorMatrixLinear(nn.Module):
 
     def __init__(self, left_dim: int, right_dim: int):
+        super(VectorMatrixLinear, self).__init__()
         self._weight_vector = Parameter(torch.Tensor(left_dim, right_dim))
         self._softmax = torch.nn.Softmax(dim=-1)
 
