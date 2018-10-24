@@ -24,6 +24,8 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                  passage_self_attention: Seq2SeqEncoder,
                  question_self_attention: Seq2SeqEncoder,
                  passage_matrix_attention: BilinearMatrixAttention,
+                 semantic_rep_layer: Seq2SeqEncoder,
+                 contextual_question_layer: Seq2SeqEncoder,
                  dropout: float = 0.2,
                  regularizer: Optional[RegularizerApplicator] = None,
                  initializer: InitializerApplicator = InitializerApplicator(),
@@ -52,6 +54,9 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self._passage_matrix_attention_softmax = torch.nn.Softmax(dim=1)
 
         self._w1 = Parameter(torch.Tensor(self._passage_self_attention.get_output_dim(), ))
+
+        self._semantic_rep_layer = semantic_rep_layer
+        self._contextual_question_layer = contextual_question_layer
 
         self._span_start_accuracy = CategoricalAccuracy()
         self._span_end_accuracy = CategoricalAccuracy()
@@ -105,3 +110,5 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         # simple fuse function
         d_d_ = torch.cat((d, d_, d * d_, d - d_), 2)
         dd = self._fuse_tanh(self._fuse_linear_d(d_d_))
+        ddd = self._semantic_rep_layer(dd)
+        qqq = self._contextual_question_layer(qq)
