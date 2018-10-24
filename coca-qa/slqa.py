@@ -1,7 +1,7 @@
 import logging
 import torch
 from torch.nn.parameter import Parameter
-from torch.nn.functional import nll_loss
+from torch.nn.functional import cross_entropy
 from typing import Optional, Dict, List, Any
 
 from allennlp.models.model import Model
@@ -25,7 +25,6 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                  passage_bilstm_encoder: Seq2SeqEncoder,
                  question_bilstm_encoder: Seq2SeqEncoder,
                  passage_self_attention: Seq2SeqEncoder,
-                 question_self_attention: Seq2SeqEncoder,
                  passage_matrix_attention: BilinearMatrixAttention,
                  semantic_rep_layer: Seq2SeqEncoder,
                  contextual_question_layer: Seq2SeqEncoder,
@@ -54,7 +53,6 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                                                out_features=self._passage_self_attention.get_output_dim())
 
         self._passage_self_attention = passage_self_attention
-        self._question_self_attention = question_self_attention
         self._passage_matrix_attention = passage_matrix_attention
         self._passage_matrix_attention_softmax = torch.nn.Softmax(dim=1)
 
@@ -67,10 +65,10 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self._vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim(),
                                                           self._semantic_rep_layer.get_output_dim())
 
-        self._span_start_accuracy = CategoricalAccuracy()
-        self._span_end_accuracy = CategoricalAccuracy()
-        self._span_accuracy = BooleanAccuracy()
-        self._squad_metrics = SquadEmAndF1()
+        # self._span_start_accuracy = CategoricalAccuracy()
+        # self._span_end_accuracy = CategoricalAccuracy()
+        # self._span_accuracy = BooleanAccuracy()
+        # self._squad_metrics = SquadEmAndF1()
 
         if dropout > 0:
             self._dropout = torch.nn.Dropout(p=dropout)
@@ -88,6 +86,7 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
 
         ## TODO:mask
         batch_size = embedded_passage.size(0)
+        passage_length = embedded_passage.size(1)
         # Shape(batch_size, question_length, encoding_dim)
         u_q = self._question_bilstm_encoder(embedded_question)
         # Shape(batch_size, passage_length, encoding_dim)
@@ -107,14 +106,14 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         p_q_ = torch.cat((u_p, q_, u_p * q_, u_p - q_), 2)
         # Shape(batch_size, question_length, 4 * encoding_dim)
         q_p_ = torch.cat((u_q, p_, u_q * p_, u_q - p_), 2)
-        # Shape(batch_size, passage_length, passage_length)
-        pp = torch.mm(self._fuse_sigmoid(self._fuse_linear_g(p_q_)),
-                      self._fuse_tanh(self._fuse_linear_m(p_q_)).permute(0, 2, 1)) + torch.mm(
-            (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_g(p_q_))), u_p.permute(0, 2, 1))
-        # Shape(batch_size, question_length, question_length)
-        qq = torch.mm(self._fuse_sigmoid(self._fuse_linear_g(q_p_)),
-                      self._fuse_tanh(self._fuse_linear_m(q_p_)).permute(0, 2, 1)) + torch.mm(
-            (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_g(q_p_))), u_q.permute(0, 2, 1))
+        # Shape(batch_size, passage_length, encoding_dim)
+        pp = torch.mul(self._fuse_sigmoid(self._fuse_linear_g(p_q_)),
+                      self._fuse_tanh(self._fuse_linear_m(p_q_))) + torch.mul(
+            (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_g(p_q_))), u_p)
+        # Shape(batch_size, question_length, encoding_dim)
+        qq = torch.mul(self._fuse_sigmoid(self._fuse_linear_g(q_p_)),
+                      self._fuse_tanh(self._fuse_linear_m(q_p_))) + torch.mul(
+            (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_g(q_p_))), u_q)
         # Shape(batch_size, passage_length, encoding_dim_1)
         d = self._passage_self_attention(pp)
         # Shape(batch_size, passage_length, passage_length)
@@ -125,13 +124,13 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         d_ = torch.mm(l, d)
         # simple fuse function
         d_d_ = torch.cat((d, d_, d * d_, d - d_), 2)
-        # Shape(batch_size, passage_length, passage_length)
-        dd = torch.mm(self._fuse_sigmoid(self._fuse_linear_dg(d_d_)),
-                      self._fuse_tanh(self._fuse_linear_d(d_d_)).permute(0, 2, 1)) + torch.mm(
-            (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_dg(d_d_))), d.permute(0, 2, 1))
+        # Shape(batch_size, passage_length, encoding_dim_1)
+        dd = torch.mul(self._fuse_sigmoid(self._fuse_linear_dg(d_d_)),
+                      self._fuse_tanh(self._fuse_linear_d(d_d_))) + torch.mul(
+            (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_dg(d_d_))), d)
         # Shape(batch_size, passage_length, encoding_dim_2)
         ddd = self._semantic_rep_layer(dd)
-        # Shape(batch_size, question_length, question_length)
+        # Shape(batch_size, question_length, encoding_dim_3)
         qqq = self._contextual_question_layer(qq)
         # Shape(batch_size, question_length, 1)
         gamma = self._vector_linear(qqq)
@@ -141,4 +140,16 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         # model & output layer
         # Shape(batch_size, 1, passage_length)
         p_start = self._vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
+        p_start = p_start.view(batch_size, -1)
         p_end = self._vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
+        p_end = p_end.view(batch_size, -1)
+
+        output = dict()
+
+        # Compute the loss for training
+        if p_start is not None:
+            loss = cross_entropy(p_start, span_start.squeeze(-1))
+            loss += cross_entropy(p_end, span_end.squeeze(-1))
+            output['loss'] = loss
+
+        return output
