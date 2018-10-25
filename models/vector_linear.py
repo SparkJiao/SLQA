@@ -17,6 +17,8 @@ class VectorLinear(nn.Module):
         if use_bias:
             self.bias = Parameter(torch.Tensor(1))
         self._softmax = torch.nn.Softmax(dim=-1)
+        nn.init.xavier_normal(self._weight_vector)
+
 
     def forward(self, tensor: torch.Tensor):
         if self._use_bias:

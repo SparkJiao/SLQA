@@ -128,7 +128,7 @@
         "num_tokens"
       ]
     ],
-    "batch_size": 4
+    "batch_size": 32
   },
   "trainer": {
     "num_epochs": 20,

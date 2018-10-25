@@ -9,6 +9,7 @@ class VectorMatrixLinear(nn.Module):
         super(VectorMatrixLinear, self).__init__()
         self._weight_vector = Parameter(torch.Tensor(left_dim, right_dim))
         # self._softmax = torch.nn.Softmax(dim=-1)
+        torch.nn.init.xavier_normal(self._weight_vector)
 
     def forward(self, vector: torch.Tensor, matrix: torch.Tensor):
         # shape of vector(batch_size, left_dim)
