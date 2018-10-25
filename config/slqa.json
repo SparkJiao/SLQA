@@ -7,9 +7,9 @@
         "type": "single_id",
         "lowercase_tokens": true
       },
-//      "elmo": {
-//        "type": "elmo_characters"
-//      },
+      "elmo": {
+        "type": "elmo_characters"
+      },
       "token_characters": {
         "type": "characters",
         "character_tokenizer": {
@@ -36,13 +36,13 @@
           "embedding_dim": 100,
           "trainable": false
         },
-//        "elmo": {
-//          "type": "elmo_token_embedder",
-//          "options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json",
-//          "weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5",
-//          "do_layer_norm": false,
-//          "dropout": 0.5
-//        },
+        "elmo": {
+          "type": "elmo_token_embedder",
+          "options_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json",
+          "weight_file": "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5",
+          "do_layer_norm": false,
+          "dropout": 0.5
+        },
         "token_characters": {
           "type": "character_encoding",
           "embedding": {
@@ -62,46 +62,46 @@
       }
     },
 //    "num_highway_layers": 2,
-//    "phrase_layer": {
+    "phrase_layer": {
+      "type": "lstm",
+      "bidirectional": true,
+      "input_size": 1224,
+      "hidden_size": 100,
+      "num_layers": 1,
+      "dropout": 0.2
+    },
+//    "passage_bilstm_encoder": {
 //      "type": "lstm",
 //      "bidirectional": true,
-//      "input_size": 1224,
+//      "input_size": 200,
 //      "hidden_size": 100,
 //      "num_layers": 1,
 //      "dropout": 0.2
 //    },
-    "passage_bilstm_encoder": {
-      "type": "lstm",
-      "bidirectional": true,
-      "input_size": 200,
-      "hidden_size": 100,
-      "num_layers": 1,
-      "dropout": 0.2
-    },
-    "question_bilstm_encoder": {
-      "type": "lstm",
-      "bidirectional": true,
-      "input_size": 200,
-      "hidden_size": 100,
-      "num_layers": 1,
-      "dropout": 0.2
-    },
+//    "question_bilstm_encoder": {
+//      "type": "lstm",
+//      "bidirectional": true,
+//      "input_size": 200,
+//      "hidden_size": 100,
+//      "num_layers": 1,
+//      "dropout": 0.2
+//    },
     "passage_self_attention":{
       "type": "lstm",
       "bidirectional": true,
-      "input_size": 100,
+      "input_size": 200,
       "hidden_size": 100,
       "num_layers": 1,
       "dropout": 0.2
     },
     "passage_matrix_attention":{
-      "matrix_1_dim": "100",
-      "matrix_2_dim": "100"
+      "matrix_1_dim": 200,
+      "matrix_2_dim": 200
     },
     "semantic_rep_layer":{
       "type": "lstm",
       "bidirectional": true,
-      "input_size": 100,
+      "input_size": 200,
       "hidden_size": 100,
       "num_layers": 1,
       "dropout": 0.2
@@ -109,7 +109,7 @@
     "contextual_question_layer":{
       "type": "lstm",
       "bidirectional": true,
-      "input_size": 100,
+      "input_size": 200,
       "hidden_size": 100,
       "num_layers": 1,
       "dropout": 0.2
@@ -128,7 +128,7 @@
         "num_tokens"
       ]
     ],
-    "batch_size": 2
+    "batch_size": 4
   },
   "trainer": {
     "num_epochs": 20,

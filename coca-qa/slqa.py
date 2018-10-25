@@ -2,7 +2,7 @@ import logging
 import torch
 from torch.nn import LSTM
 from torch.nn.parameter import Parameter
-from torch.nn.functional import cross_entropy
+from torch.nn.functional import cross_entropy, nll_loss
 from typing import Optional, Dict, List, Any
 
 from allennlp.models.model import Model
@@ -26,13 +26,13 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
     def __init__(self, vocab: Vocabulary,
                  text_field_embedder: TextFieldEmbedder,
                  # num_highway_layers: int,
-                 # phrase_layer: Seq2SeqEncoder,
-                 passage_bilstm_encoder: Seq2SeqEncoder,
-                 question_bilstm_encoder: Seq2SeqEncoder,
-                 passage_self_attention: LSTM,
+                 phrase_layer: Seq2SeqEncoder,
+                 # passage_bilstm_encoder: Seq2SeqEncoder,
+                 # question_bilstm_encoder: Seq2SeqEncoder,
+                 passage_self_attention: Seq2SeqEncoder,
                  passage_matrix_attention: BilinearMatrixAttention,
-                 semantic_rep_layer: LSTM,
-                 contextual_question_layer: LSTM,
+                 semantic_rep_layer: Seq2SeqEncoder,
+                 contextual_question_layer: Seq2SeqEncoder,
                  dropout: float = 0.2,
                  mask_lstms: bool = True,
                  regularizer: Optional[RegularizerApplicator] = None,
@@ -41,12 +41,13 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
 
         super(MultiGranularityHierarchicalAttentionFusionNetworks, self).__init__(vocab, regularizer)
         self._text_field_embedder = text_field_embedder
-        # self._phrase_layer = phrase_layer
+        self._phrase_layer = phrase_layer
         # self._highway_layer = TimeDistributed(Highway(text_field_embedder.get_output_dim(),
         #                                               num_highway_layers))
-        self._passage_bilstm_encoder = passage_bilstm_encoder
-        self._question_bilstm_encoder = question_bilstm_encoder
-        self._encoding_dim = self._passage_bilstm_encoder.get_output_dim()
+        # self._passage_bilstm_encoder = passage_bilstm_encoder
+        # self._question_bilstm_encoder = question_bilstm_encoder
+        # self._encoding_dim = self._passage_bilstm_encoder.get_output_dim()
+        self._encoding_dim = self._phrase_layer.get_output_dim()
         self._atten_linear_layer = torch.nn.Linear(in_features=self._encoding_dim,
                                                    out_features=self._encoding_dim, bias=False)
         self._linear_activate = torch.nn.ReLU()
@@ -57,31 +58,35 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self._fuse_tanh = torch.nn.Tanh()
         self._fuse_sigmoid = torch.nn.Sigmoid()
 
+        self._One = torch.Tensor([1.0]).cuda()
+
         self._passage_self_attention = passage_self_attention
         self._passage_matrix_attention = passage_matrix_attention
         self._passage_matrix_attention_softmax = torch.nn.Softmax(dim=1)
-
-        # self._fuse_linear_d = torch.nn.Linear(in_features=4 * self._passage_self_attention.get_output_dim(),
-        #                                       out_features=self._passage_self_attention.get_output_dim())
-        # self._fuse_linear_dg = torch.nn.Linear(in_features=4 * self._passage_self_attention.get_output_dim(),
-        #                                        out_features=self._passage_self_attention.get_output_dim())
-
+        #
+        # # self._fuse_linear_d = torch.nn.Linear(in_features=4 * self._passage_self_attention.get_output_dim(),
+        # #                                       out_features=self._passage_self_attention.get_output_dim())
+        # # self._fuse_linear_dg = torch.nn.Linear(in_features=4 * self._passage_self_attention.get_output_dim(),
+        # #                                        out_features=self._passage_self_attention.get_output_dim())
+        #
         self._fuse_linear_d = torch.nn.Linear(in_features=4 * self._encoding_dim,
                                               out_features=self._encoding_dim)
         self._fuse_linear_dg = torch.nn.Linear(in_features=4 * self._encoding_dim,
                                                out_features=self._encoding_dim)
-
+        #
         self._semantic_rep_layer = semantic_rep_layer
         self._contextual_question_layer = contextual_question_layer
 
-        # self._vector_linear = VectorLinear(self._contextual_question_layer.get_output_dim(), use_bias=False)
-        # self._vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim(),
-        #                                                   self._semantic_rep_layer.get_output_dim())
+        self._vector_linear = VectorLinear(self._contextual_question_layer.get_output_dim(), use_bias=False)
+        self._start_vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim(),
+                                                          self._semantic_rep_layer.get_output_dim())
+        self._end_vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim(),
+                                                          self._semantic_rep_layer.get_output_dim())
 
-        self._vector_linear = VectorLinear(self._encoding_dim, use_bias=False)
-        self._vector_matrix_bilinear = VectorMatrixLinear(self._encoding_dim,
-                                                          self._encoding_dim)
-
+        # self._vector_linear = VectorLinear(self._encoding_dim, use_bias=False)
+        # self._vector_matrix_bilinear = VectorMatrixLinear(self._encoding_dim,
+        #                                                   self._encoding_dim)
+        #
         self._span_start_accuracy = CategoricalAccuracy()
         self._span_end_accuracy = CategoricalAccuracy()
         self._span_accuracy = BooleanAccuracy()
@@ -108,6 +113,14 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
 
         batch_size = embedded_passage.size(0)
         passage_length = embedded_passage.size(1)
+        question_length = embedded_question.size(1)
+
+        # print("batch_size:")
+        # print(batch_size)
+        # print("passage_length:")
+        # print(passage_length)
+        # print("question_length:")
+        # print(question_length)
 
         question_lstm_mask = question_mask if self._mask_lstms else None
         passage_lstm_mask = passage_mask if self._mask_lstms else None
@@ -116,74 +129,133 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         # encoding_dim = encoded_question.size(-1)
 
         # Shape(batch_size, question_length, encoding_dim)
-        u_q = self._dropout(self._question_bilstm_encoder(embedded_question, question_lstm_mask))
+        # u_q = self._dropout(self._question_bilstm_encoder(embedded_question, question_lstm_mask))
+
+        u_q = self._dropout(self._phrase_layer(embedded_question, question_lstm_mask))
+        encoding_dim = u_q.size(-1)
+        u_q = u_q.reshape((batch_size * question_length, -1))
         # Shape(batch_size, passage_length, encoding_dim)
-        u_p = self._dropout(self._passage_bilstm_encoder(embedded_passage, passage_lstm_mask))
+        # u_p = self._dropout(self._passage_bilstm_encoder(embedded_passage, passage_lstm_mask))
+
+        u_p = self._dropout(self._phrase_layer(embedded_passage, passage_lstm_mask)).reshape(
+            (batch_size * passage_length, -1))
         # Shape(batch_size, question_length, passage_length)
-        s = torch.mm(self._linear_activate(self._atten_linear_layer(u_q)), self._linear_activate(
-            self._atten_linear_layer(u_p)).permute(0, 2, 1))
+
+        # s = torch.mm(self._linear_activate(self._atten_linear_layer(u_q)), self._linear_activate(
+        #     self._atten_linear_layer(u_p)).permute(0, 2, 1))
+        u_q = self._linear_activate(self._atten_linear_layer(u_q)).reshape((batch_size, question_length, -1))
+        u_p = self._linear_activate(self._atten_linear_layer(u_p)).reshape((batch_size, passage_length, -1))
+        u_p = u_p.permute(0, 2, 1)
+        s = torch.bmm(u_q, u_p)
+        u_p = u_p.permute(0, 2, 1)
+        # s = torch.mm(self._linear_activate(self._atten_linear_layer(u_q)).reshape((batch_size, question_length, -1)),
+        #              (self._linear_activate(self._atten_linear_layer(u_p)).reshape(
+        #                  (batch_size, passage_length, -1))).permute(0, 2, 1))
+        # print(s.size())
         # Shape(batch_size, encoding_dim, passage_length)
-        q_ = vector_weight_sum_matrix(self._softmax_d1(s).permute(0, 2, 1), u_q.permute(0, 2, 1))
-        # Shape(batch_size, encoding_dim, question_length)
-        p_ = vector_weight_sum_matrix(self._softmax_d2(s), u_p.permute(0, 2, 1))
-        # Shape(batch_size, question_length, encoding_dim)
-        p_ = p_.permute(0, 2, 1)
+        # q_ = vector_weight_sum_matrix(self._softmax_d1(s).permute(0, 2, 1), u_q.permute(0, 2, 1))
         # Shape(batch_size, passage_length, encoding_dim)
-        q_ = q_.permute(0, 2, 1)
+        q_ = util.weighted_sum(u_q, self._softmax_d1(s).transpose(1, 2))
+        # Shape(batch_size, encoding_dim, question_length)
+        # p_ = vector_weight_sum_matrix(self._softmax_d2(s), u_p.permute(0, 2, 1))
+        # Shape(batch_size, question_length, encoding_dim)
+        p_ = util.weighted_sum(u_p, self._softmax_d2(s))
+        # print("q_ size")
+        # print(q_.size())
+        # print("p_ size")
+        # print(p_.size())
+        #     # Shape(batch_size, question_length, encoding_dim)
+        #     p_ = p_.permute(0, 2, 1)
+        #     # Shape(batch_size, passage_length, encoding_dim)
+        #     q_ = q_.permute(0, 2, 1)
         # Shape(batch_size, passage_length, 4 * encoding_dim)
         p_q_ = torch.cat((u_p, q_, u_p * q_, u_p - q_), 2)
+        # print("p_q_ size:")
+        # print(p_q_.size())
         # Shape(batch_size, question_length, 4 * encoding_dim)
         q_p_ = torch.cat((u_q, p_, u_q * p_, u_q - p_), 2)
+        # print("q_p_ size:")
+        # print(q_p_.size())
+        p_q_ = p_q_.reshape(batch_size * passage_length, -1)
+        q_p_ = q_p_.reshape(batch_size * question_length, -1)
         # Shape(batch_size, passage_length, encoding_dim)
         pp = torch.mul(self._fuse_sigmoid(self._fuse_linear_g(p_q_)),
-                       self._fuse_tanh(self._fuse_linear_m(p_q_))) + torch.mul(
-            (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_g(p_q_))), u_p)
+                       self._fuse_tanh(self._fuse_linear_m(p_q_))) - torch.mul(
+            self._fuse_sigmoid(self._fuse_linear_g(p_q_)),
+            u_p.reshape((batch_size * passage_length, -1))) + u_p.reshape((batch_size * passage_length, -1))
+        pp = pp.reshape((batch_size, passage_length, -1))
+        # print("pp size")
+        # print(pp.size())
         # Shape(batch_size, question_length, encoding_dim)
         qq = torch.mul(self._fuse_sigmoid(self._fuse_linear_g(q_p_)),
-                       self._fuse_tanh(self._fuse_linear_m(q_p_))) + torch.mul(
-            (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_g(q_p_))), u_q)
+                       self._fuse_tanh(self._fuse_linear_m(q_p_))) - torch.mul(
+            self._fuse_sigmoid(self._fuse_linear_g(q_p_)),
+            u_q.reshape((batch_size * question_length, -1))) + u_q.reshape((batch_size * question_length, -1))
+        qq = qq.reshape((batch_size, question_length, -1))
+        # print("qq size")
+        # print(qq.size())
         # Shape(batch_size, passage_length, encoding_dim_1)
-        d = self._passage_self_attention(pp, None)
+        d = self._passage_self_attention(pp, passage_lstm_mask)
         # Shape(batch_size, passage_length, passage_length)
         l = self._passage_matrix_attention(d, d)
+        # print("l size")
+        # print(l.size())
+
         tmp = l.size(1)
-        l = self._passage_matrix_attention_softmax(l.view(batch_size, -1)).view(batch_size, tmp, -1)
+        l = self._passage_matrix_attention_softmax(l.reshape((batch_size, -1))).reshape((batch_size, tmp, -1))
         # Shape(batch_size, passage_length, encoding_dim_1)
-        d_ = torch.mm(l, d)
+        d_ = torch.bmm(l, d)
         # simple fuse function
         d_d_ = torch.cat((d, d_, d * d_, d - d_), 2)
         # Shape(batch_size, passage_length, encoding_dim_1)
+        d_d_ = d_d_.reshape(batch_size * passage_length, -1)
+        d = d.reshape(batch_size * passage_length, -1)
         dd = torch.mul(self._fuse_sigmoid(self._fuse_linear_dg(d_d_)),
-                       self._fuse_tanh(self._fuse_linear_d(d_d_))) + torch.mul(
-            (torch.Tensor([1]) - self._fuse_sigmoid(self._fuse_linear_dg(d_d_))), d)
+                       self._fuse_tanh(self._fuse_linear_d(d_d_))) - torch.mul(
+            self._fuse_sigmoid(self._fuse_linear_dg(d_d_)), d) + d
+        dd = dd.reshape(batch_size, passage_length, -1)
         # Shape(batch_size, passage_length, encoding_dim_2)
-        ddd = self._semantic_rep_layer(dd, None)
+        ddd = self._semantic_rep_layer(dd, passage_lstm_mask)
         # Shape(batch_size, question_length, encoding_dim_3)
-        qqq = self._contextual_question_layer(qq, None)
+        qqq = self._contextual_question_layer(qq, question_lstm_mask)
         # Shape(batch_size, question_length, 1)
-        gamma = self._vector_linear(qqq)
+        gamma = self._vector_linear(qqq.reshape(batch_size * question_length, -1)).reshape(batch_size, question_length)
         # Shape(batch_size, question_length)
-        vec_q = vector_weight_sum(gamma, qqq)
+        # vec_q = vector_weight_sum(gamma, qqq)
+        vec_q = util.weighted_sum(qqq, gamma)
 
         # model & output layer
         # Shape(batch_size, 1, passage_length)
-        p_start = self._vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
-        p_start = p_start.view(batch_size, -1)
-        p_end = self._vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
-        p_end = p_end.view(batch_size, -1)
+        p_start = self._start_vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
+        span_start_logits = p_start.reshape((batch_size, -1))
+        span_start_probs = util.masked_softmax(span_start_logits, passage_lstm_mask)
+        p_end = self._end_vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
+        span_end_logits = p_end.reshape((batch_size, -1))
+        span_end_probs = util.masked_softmax(span_end_logits, passage_lstm_mask)
 
-        best_span = self.get_best_span(p_start, p_end)
+        best_span = self.get_best_span(span_start_logits, span_end_logits)
 
         output = dict()
+        output['best_span'] = best_span
+
+        # # debug
+        # # Compute the loss for training
+        # output = dict()
+        # # self._span_end_accuracy(p_end, span_end.squeeze(-1))
+        # # self._span_accuracy(best_span, torch.stack([span_start, span_end], -1))
+        # loss = torch.Tensor([2.2])
+        # print(loss)
+        # output['loss'] = loss
+        # return output
 
         # Compute the loss for training
         if p_start is not None:
-            loss = cross_entropy(p_start, span_start.squeeze(-1))
+            loss = nll_loss(util.masked_log_softmax(span_start_logits, passage_lstm_mask), span_start.squeeze(-1))
             self._span_start_accuracy(p_start, span_start.squeeze(-1))
-            loss += cross_entropy(p_end, span_end.squeeze(-1))
+            loss += nll_loss(util.masked_log_softmax(span_end_logits, passage_lstm_mask), span_end.squeeze(-1))
             self._span_end_accuracy(p_end, span_end.squeeze(-1))
             self._span_accuracy(best_span, torch.stack([span_start, span_end], -1))
-            print(loss)
+            # print(loss)
             output['loss'] = loss
 
         # Compute the EM and F1 on SQuAD and add the tokenized input to the output.
