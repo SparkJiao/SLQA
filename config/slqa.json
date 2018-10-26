@@ -70,22 +70,6 @@
       "num_layers": 1,
       "dropout": 0.2
     },
-//    "passage_bilstm_encoder": {
-//      "type": "lstm",
-//      "bidirectional": true,
-//      "input_size": 200,
-//      "hidden_size": 100,
-//      "num_layers": 1,
-//      "dropout": 0.2
-//    },
-//    "question_bilstm_encoder": {
-//      "type": "lstm",
-//      "bidirectional": true,
-//      "input_size": 200,
-//      "hidden_size": 100,
-//      "num_layers": 1,
-//      "dropout": 0.2
-//    },
     "passage_self_attention":{
       "type": "lstm",
       "bidirectional": true,
@@ -114,7 +98,8 @@
       "num_layers": 1,
       "dropout": 0.2
     },
-    "dropout": 0.2
+    "dropout": 0.2,
+    "mask_lstms": true
   },
   "iterator": {
     "type": "bucket",
@@ -128,7 +113,7 @@
         "num_tokens"
       ]
     ],
-    "batch_size": 32
+    "batch_size": 8
   },
   "trainer": {
     "num_epochs": 20,

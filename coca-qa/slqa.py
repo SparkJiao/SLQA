@@ -69,9 +69,9 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
 
         self._vector_linear = VectorLinear(self._contextual_question_layer.get_output_dim(), use_bias=False)
         self._start_vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim(),
-                                                          self._semantic_rep_layer.get_output_dim())
+                                                                self._semantic_rep_layer.get_output_dim())
         self._end_vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim(),
-                                                          self._semantic_rep_layer.get_output_dim())
+                                                              self._semantic_rep_layer.get_output_dim())
 
         self._span_start_accuracy = CategoricalAccuracy()
         self._span_end_accuracy = CategoricalAccuracy()
@@ -84,6 +84,7 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
             self._dropout = lambda x: x
 
         self._mask_lstms = mask_lstms
+        self._loss = torch.nn.CrossEntropyLoss()
         initializer(self)
 
     def forward(self, question: Dict[str, torch.LongTensor], passage: Dict[str, torch.LongTensor],
@@ -173,23 +174,39 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         # span_start_probs = util.masked_softmax(span_start_logits, passage_lstm_mask)
         p_end = self._end_vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
         span_end_logits = p_end.reshape((batch_size, -1))
-        span_start_logits = util.replace_masked_values(span_start_logits, passage_mask, 1e-7)
-        span_end_logits = util.replace_masked_values(span_end_logits, passage_mask, 1e-7)
+        # span_start_logits = util.replace_masked_values(span_start_logits, passage_mask, 1e-7)
+        # span_end_logits = util.replace_masked_values(span_end_logits, passage_mask, 1e-7)
         # span_end_probs = util.masked_softmax(span_end_logits, passage_lstm_mask)
 
+        # span_start_logits = self._softmax_d1(span_start_logits)
+        # span_end_logits = self._softmax_d1(span_end_logits)
+
+        span_start_logits = util.masked_softmax(span_start_logits, passage_lstm_mask, 1)
+        span_end_logits = util.masked_softmax(span_end_logits, passage_lstm_mask, 1)
+
         best_span = self.get_best_span(span_start_logits, span_end_logits)
+
+        print("span_start_logits")
+        print(span_start_logits)
+        print("span_end_logits")
+        print(span_end_logits)
 
         output = dict()
         output['best_span'] = best_span
 
         # Compute the loss for training
         if span_start is not None:
-            loss = nll_loss(util.masked_log_softmax(span_start_logits, passage_mask), span_start.squeeze(-1))
+            # loss = nll_loss(util.masked_log_softmax(span_start_logits, passage_mask), span_start.squeeze(-1))
+            # self._span_start_accuracy(span_start_logits, span_start.squeeze(-1))
+            # loss += nll_loss(util.masked_log_softmax(span_end_logits, passage_mask), span_end.squeeze(-1))
+            # self._span_end_accuracy(span_end_logits, span_end.squeeze(-1))
+            # self._span_accuracy(best_span, torch.stack([span_start, span_end], -1))
+            loss = self._loss(util.masked_softmax(span_start_logits, passage_lstm_mask, dim=1), span_start.squeeze(-1))
             self._span_start_accuracy(span_start_logits, span_start.squeeze(-1))
-            loss += nll_loss(util.masked_log_softmax(span_end_logits, passage_mask), span_end.squeeze(-1))
+            loss += self._loss(util.masked_softmax(span_start_logits, passage_lstm_mask, dim=1), span_start.squeeze(-1))
             self._span_end_accuracy(span_end_logits, span_end.squeeze(-1))
             self._span_accuracy(best_span, torch.stack([span_start, span_end], -1))
-            # print(loss)
+            print(loss)
             output['loss'] = loss
 
         # Compute the EM and F1 on SQuAD and add the tokenized input to the output.
