@@ -36,3 +36,10 @@ def vector_weight_sum_matrix(weight_vector_matrix: torch.Tensor, matrix: torch.T
                 output[i][j] = output[i][j] + torch.mul(weight_vector_matrix[i][j][k], matrix[i][k])
     output = output.permute(0, 2, 1)
     return output
+
+def attention_weight_sum_batch(attention_vector, matrix):
+    # shape of attention_vector: (batch_size, vector_num, vector_dim)
+    # shape of matrix: (batch_size, text_length(token_nums), encoding_dim)
+    # vector_dim = text_length
+    # shape of output_matrixL (batch_size, vector_num, encoding_dim)
+    return torch.bmm(attention_vector, matrix)
