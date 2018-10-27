@@ -6,6 +6,7 @@ from allennlp.modules import TimeDistributed
 
 class SelfAttentionLayer(nn.Module):
     def __init__(self, input_dim):
+        super(SelfAttentionLayer, self).__init__()
         self._input_dim = input_dim
         self._linear = TimeDistributed(torch.nn.Linear(in_features=input_dim, out_features=input_dim, bias=False))
 

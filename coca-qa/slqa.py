@@ -170,7 +170,7 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         gamma = util.masked_softmax(self._vector_linear(qqq), question_lstm_mask.unsqueeze(-1), dim=2).squeeze(-1)
         # Shape(batch_size, question_length)
         # (1, question_length) ` (question_length, encoding_dim)
-        vec_q = torch.bmm(gamma.squeeze(1), qqq)
+        vec_q = torch.bmm(gamma.unsqueeze(1), qqq)
 
         # model & output layer
         # Shape(batch_size, 1, passage_length)
@@ -180,7 +180,7 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         span_start_logits = p_start
         # span_start_probs = util.masked_softmax(span_start_logits, passage_lstm_mask)
         # p_end = self._end_vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
-        p_end = util.masked_softmax(torch.bmm(self._model_layer_e(vec_q, ddd.transpose(2, 1))).squeeze(1),
+        p_end = util.masked_softmax(torch.bmm(self._model_layer_e(vec_q), ddd.transpose(2, 1)).squeeze(1),
                                     passage_lstm_mask, dim=1)
         span_end_logits = p_end
         # span_start_logits = util.replace_masked_values(span_start_logits, passage_mask, 1e-7)

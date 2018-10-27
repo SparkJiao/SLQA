@@ -114,7 +114,7 @@ class CocaQAReader(DatasetReader):
                         span_starts.append(start)
                         span_ends.append(end)
 
-                his_paragraph = paragraph
+                his_paragraph = n_paragraph
                 his_question = question_text
                 # if ind > 1:
                 #     his_paragraph = his_paragraph + " " + str(history[ind - 1][1])
