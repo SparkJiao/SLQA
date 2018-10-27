@@ -7,17 +7,13 @@ from typing import Optional, Dict, List, Any
 
 from allennlp.models.model import Model
 from allennlp.data import Vocabulary
-from allennlp.modules import Highway
 from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder, TimeDistributed
-from allennlp.modules.matrix_attention.bilinear_matrix_attention import BilinearMatrixAttention
 from allennlp.nn import RegularizerApplicator, InitializerApplicator
 from allennlp.training.metrics import CategoricalAccuracy, BooleanAccuracy, SquadEmAndF1
 from allennlp.nn import util
 from models.fusion_layer import FusionLayer
-from models.vector_matrix_bilinear import VectorMatrixLinear
-from models.vector_linear import VectorLinear
 from models.self_attention_layer import SelfAttentionLayer
-from utils.vector_weight_sum import vector_weight_sum_matrix, vector_weight_sum, attention_weight_sum_batch
+from utils.vector_weight_sum import attention_weight_sum_batch
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -27,10 +23,8 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
 
     def __init__(self, vocab: Vocabulary,
                  text_field_embedder: TextFieldEmbedder,
-                 # num_highway_layers: int,
                  phrase_layer: Seq2SeqEncoder,
                  passage_self_attention: Seq2SeqEncoder,
-                 # passage_matrix_attention: BilinearMatrixAttention,
                  semantic_rep_layer: Seq2SeqEncoder,
                  contextual_question_layer: Seq2SeqEncoder,
                  dropout: float = 0.2,
@@ -45,49 +39,43 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         # self._highway_layer = TimeDistributed(Highway(text_field_embedder.get_output_dim(),
         #                                               num_highway_layers))
         self._encoding_dim = self._phrase_layer.get_output_dim()
-        self._atten_linear_layer = TimeDistributed(torch.nn.Linear(in_features=self._encoding_dim,
-                                                                   out_features=self._encoding_dim, bias=False))
+        # self._atten_linear_layer = TimeDistributed(torch.nn.Linear(in_features=self._encoding_dim,
+        #                                                            out_features=self._encoding_dim, bias=False))
+        self._atten_linear_layer = torch.nn.Linear(in_features=self._encoding_dim,
+                                                   out_features=self._encoding_dim, bias=False)
         self._relu = torch.nn.ReLU()
         self._softmax_d1 = torch.nn.Softmax(dim=1)
         self._softmax_d2 = torch.nn.Softmax(dim=2)
 
-        # self._fuse_linear_m = TimeDistributed(
-        #     torch.nn.Linear(in_features=4 * self._encoding_dim, out_features=self._encoding_dim))
-        # self._fuse_linear_g = TimeDistributed(
-        #     torch.nn.Linear(in_features=4 * self._encoding_dim, out_features=1))
         self._atten_fusion = FusionLayer(self._encoding_dim)
 
         self._tanh = torch.nn.Tanh()
         self._sigmoid = torch.nn.Sigmoid()
 
         self._passage_self_attention = passage_self_attention
-        # self._passage_matrix_attention = passage_matrix_attention
-        # self._passage_matrix_attention_softmax = torch.nn.Softmax(dim=1)
 
-        self._self_atten_layer = SelfAttentionLayer(self._encoding_dim)
-
-        # self._fuse_linear_d = torch.nn.Linear(in_features=4 * self._encoding_dim,
-        #                                       out_features=self._encoding_dim)
-        # self._fuse_linear_dg = torch.nn.Linear(in_features=4 * self._encoding_dim,
-        #                                        out_features=self._encoding_dim)
-        #
+        # self._self_atten_layer = SelfAttentionLayer(self._encoding_dim)
+        self._self_atten_layer = torch.nn.Bilinear(self._encoding_dim, self._encoding_dim, self._encoding_dim,
+                                                   bias=False)
         self._self_atten_fusion = FusionLayer(self._encoding_dim)
 
         self._semantic_rep_layer = semantic_rep_layer
         self._contextual_question_layer = contextual_question_layer
 
-        # self._vector_linear = VectorLinear(self._contextual_question_layer.get_output_dim(), use_bias=False)
-        self._vector_linear = TimeDistributed(
-            torch.nn.Linear(in_features=self._encoding_dim, out_features=1, bias=False))
-        # self._start_vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim(),
-        #                                                         self._semantic_rep_layer.get_output_dim())
-        # self._end_vector_matrix_bilinear = VectorMatrixLinear(self._contextual_question_layer.get_output_dim(),
-        #                                                       self._semantic_rep_layer.get_output_dim())
-        self._model_layer_s = TimeDistributed(
-            torch.nn.Linear(in_features=self._encoding_dim, out_features=self._encoding_dim, bias=False))
-        self._model_layer_e = TimeDistributed(
-            torch.nn.Linear(in_features=self._encoding_dim, out_features=self._encoding_dim, bias=False))
+        # self._vector_linear = TimeDistributed(
+        #     torch.nn.Linear(in_features=self._encoding_dim, out_features=1, bias=False))
+        #
+        # self._model_layer_s = TimeDistributed(
+        #     torch.nn.Linear(in_features=self._encoding_dim, out_features=self._encoding_dim, bias=False))
+        # self._model_layer_e = TimeDistributed(
+        #     torch.nn.Linear(in_features=self._encoding_dim, out_features=self._encoding_dim, bias=False))
+        self._vector_linear = torch.nn.Linear(in_features=self._encoding_dim, out_features=1, bias=False)
 
+        self._model_layer_s = torch.nn.Linear(in_features=self._encoding_dim, out_features=self._encoding_dim,
+                                              bias=False)
+        self._model_layer_e = torch.nn.Linear(in_features=self._encoding_dim, out_features=self._encoding_dim,
+                                              bias=False)
+        # self._model_layer_s = torch.nn.Bilinear(in1_features=self._encoding_dim, in2_features=self._encoding_dim, out_features=)
         self._span_start_accuracy = CategoricalAccuracy()
         self._span_end_accuracy = CategoricalAccuracy()
         self._span_accuracy = BooleanAccuracy()
@@ -138,28 +126,16 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         # Shape(batch_size, question_length, encoding_dim)
         # Q tot P
         p_ = attention_weight_sum_batch(util.masked_softmax(s, question_lstm_mask.unsqueeze(-1), dim=2), u_p)
-        # # Shape(batch_size, passage_length, 4 * encoding_dim)
-        # p_q_ = torch.cat((u_p, q_, u_p * q_, u_p - q_), 2)
-        # # Shape(batch_size, question_length, 4 * encoding_dim)
-        # q_p_ = torch.cat((u_q, p_, u_q * p_, u_q - p_), 2)
-        # Shape(batch_size, passage_length, encoding_dim)
-
-        # pp = self._sigmoid(self._fuse_linear_g(p_q_)) * self._tanh(self._fuse_linear_m(p_q_)) + (
-        #         1 - self._sigmoid(self._fuse_linear_g(p_q_))) * u_p
         pp = self._atten_fusion(u_p, q_)
         # Shape(batch_size, question_length, encoding_dim)
-
-        # qq = self._sigmoid(self._fuse_linear_g(q_p_)) * self._tanh(self._fuse_linear_m(q_p_)) + (
-        #         1 - self._sigmoid(self._fuse_linear_g(q_p_))) * u_q
         qq = self._atten_fusion(u_q, p_)
         # Shape(batch_size, passage_length, encoding_dim)
         d = self._passage_self_attention(pp, passage_lstm_mask)
-        # Shape(batch_size, passage_length, passage_length)
-        l = self._self_atten_layer(d)
-        # l = self._passage_matrix_attention_softmax(l.reshape((batch_size, -1))).reshape((batch_size, tmp, -1))
-        l = self._softmax_d1(l.reshape(batch_size, -1)).reshape(batch_size, passage_length, -1)
         # Shape(batch_size, passage_length, encoding_dim)
-        d_ = torch.bmm(l, d)
+        l = self._self_atten_layer(d, d)
+        l = self._softmax_d2(l)
+        # Shape(batch_size, passage_length, encoding_dim)
+        d_ = l * d
         # Shape(batch_size, passage_length, encoding_dim)
         dd = self._self_atten_fusion(d, d_)
         # Shape(batch_size, passage_length, encoding_dim)
@@ -167,16 +143,19 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         # Shape(batch_size, question_length, encoding_dim)
         qqq = self._contextual_question_layer(qq, question_lstm_mask)
         # Shape(batch_size, question_length, 1) -> (batch_size, question_length)
-        gamma = util.masked_softmax(self._vector_linear(qqq), question_lstm_mask.unsqueeze(-1), dim=2).squeeze(-1)
+        # gamma = util.masked_softmax(self._vector_linear(qqq), question_lstm_mask.unsqueeze(-1), dim=2).squeeze(-1)
+        qqq_tmp = self._vector_linear(qqq).squeeze(-1)
+        gamma = self._softmax_d1(qqq_tmp)
         # Shape(batch_size, question_length)
         # (1, question_length) ` (question_length, encoding_dim)
         vec_q = torch.bmm(gamma.unsqueeze(1), qqq)
-
         # model & output layer
         # Shape(batch_size, 1, passage_length)
-        # p_start = self._start_vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
-        p_start = util.masked_softmax(torch.bmm(self._model_layer_s(vec_q), ddd.transpose(2, 1)).squeeze(1),
+        vec_q_tmp = self._model_layer_s(vec_q)
+        p_start = util.masked_softmax(torch.bmm(vec_q_tmp, ddd.transpose(2, 1)).squeeze(1),
                                       passage_lstm_mask, dim=1)
+        # p_start = torch.bmm(vec_q_tmp, ddd.transpose(2, 1)).squeeze(1)
+        # p_start = self._softmax_d1(p_start)
         span_start_logits = p_start
         # span_start_probs = util.masked_softmax(span_start_logits, passage_lstm_mask)
         # p_end = self._end_vector_matrix_bilinear(vec_q, ddd.permute(0, 2, 1))
@@ -186,9 +165,6 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         # span_start_logits = util.replace_masked_values(span_start_logits, passage_mask, 1e-7)
         # span_end_logits = util.replace_masked_values(span_end_logits, passage_mask, 1e-7)
         # span_end_probs = util.masked_softmax(span_end_logits, passage_lstm_mask)
-
-        # span_start_logits = self._softmax_d1(span_start_logits)
-        # span_end_logits = self._softmax_d1(span_end_logits)
 
         best_span = self.get_best_span(span_start_logits, span_end_logits)
 

@@ -78,10 +78,6 @@
       "num_layers": 1,
       "dropout": 0.2
     },
-//    "passage_matrix_attention":{
-//      "matrix_1_dim": 200,
-//      "matrix_2_dim": 200
-//    },
     "semantic_rep_layer":{
       "type": "lstm",
       "bidirectional": true,
