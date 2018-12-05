@@ -170,7 +170,7 @@ class CocaQAReader(DatasetReader):
                          start_span_list: List[List[int]] = None,
                          end_span_list: List[List[int]] = None,
                          passage_tokens: List[Token] = None,
-                         yesno_list: List[int] = None,
+                         yesno_list: List[str] = None,
                          additional_metadata: Dict[str, Any] = None) -> Instance:
         # pylint: disable=arguments-differ
         # We need to convert character indices in `passage_text` to token indices in
