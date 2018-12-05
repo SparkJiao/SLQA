@@ -74,8 +74,7 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
 
         embedded_question = self._text_field_embedder(question, num_wrapping_dims=1)
         # total_qa_count * max_q_len * encoding_dim
-        embedded_question = embedded_question.reshape(total_qa_count, max_q_len,
-                                                      self._text_field_embedder.get_output_dim())
+        embedded_question = embedded_question.reshape(total_qa_count, max_q_len, self._text_field_embedder.get_output_dim())
         embedded_passage = self._text_field_embedder(passage)
 
         word_emb_ques, elmo_ques, ques_feat = torch.split(embedded_question, [200, 1024, 40], dim=2)
@@ -102,12 +101,8 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
 
         encoded_passage = self._variational_dropout(projected_passage)
         repeated_encoded_passage = encoded_passage.unsqueeze(1).repeat(1, max_qa_count, 1, 1)
-        repeated_encoded_passage = repeated_encoded_passage.view(total_qa_count,
-                                                                 passage_length,
-                                                                 self._encoding_dim)
-        repeated_pass_feat = (pass_feat.unsqueeze(1).repeat(1, max_qa_count, 1, 1)).view(total_qa_count,
-                                                                                         passage_length,
-                                                                                         40)
+        repeated_encoded_passage = repeated_encoded_passage.view(total_qa_count, passage_length, self._encoding_dim)
+        repeated_pass_feat = (pass_feat.unsqueeze(1).repeat(1, max_qa_count, 1, 1)).view(total_qa_count, passage_length, 40)
         encoded_question = self._variational_dropout(projected_question)
 
         # total_qa_count * max_q_len * passage_length
@@ -155,19 +150,16 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         span_start_logits = util.replace_masked_values(span_start_logits, repeated_passage_mask, -1e7)
         span_end_logits = util.replace_masked_values(span_end_logits, repeated_passage_mask, -1e7)
 
-        best_span = self._get_best_span_yesno_followup(span_start_logits, span_end_logits,
-                                                       span_yesno_logits, self._max_span_length)
+        best_span = self._get_best_span_yesno_followup(span_start_logits, span_end_logits, span_yesno_logits, self._max_span_length)
 
         output_dict: Dict[str, Any] = {}
 
         # Compute the loss for training
 
         if span_start is not None:
-            loss = nll_loss(util.masked_log_softmax(span_start_logits, repeated_passage_mask), span_start.view(-1),
-                            ignore_index=-1)
+            loss = nll_loss(util.masked_log_softmax(span_start_logits, repeated_passage_mask), span_start.view(-1), ignore_index=-1)
             self._span_start_accuracy(span_start_logits, span_start.view(-1), mask=qa_mask)
-            loss += nll_loss(util.masked_log_softmax(span_end_logits,
-                                                     repeated_passage_mask), span_end.view(-1), ignore_index=-1)
+            loss += nll_loss(util.masked_log_softmax(span_end_logits, repeated_passage_mask), span_end.view(-1), ignore_index=-1)
             self._span_end_accuracy(span_end_logits, span_end.view(-1), mask=qa_mask)
             self._span_accuracy(best_span[:, 0:2],
                                 torch.stack([span_start, span_end], -1).view(total_qa_count, 2),
@@ -225,14 +217,10 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                             idxes = list(range(len(answer_texts)))
                             idxes.pop(answer_index)
                             refs = [answer_texts[z] for z in idxes]
-                            t_f1.append(squad_eval.metric_max_over_ground_truths(squad_eval.f1_score,
-                                                                                 best_span_string,
-                                                                                 refs))
+                            t_f1.append(squad_eval.metric_max_over_ground_truths(squad_eval.f1_score, best_span_string, refs))
                         f1_score = 1.0 * sum(t_f1) / len(t_f1)
                     else:
-                        f1_score = squad_eval.metric_max_over_ground_truths(squad_eval.f1_score,
-                                                                            best_span_string,
-                                                                            answer_texts)
+                        f1_score = squad_eval.metric_max_over_ground_truths(squad_eval.f1_score, best_span_string, answer_texts)
                 self._official_f1(100 * f1_score)
             output_dict['qid'].append(per_dialog_query_id_list)
             output_dict['best_span_str'].append(per_dialog_best_span_list)
@@ -240,8 +228,7 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         return output_dict
 
     def decode(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, Any]:
-        yesno_tags = [[self.vocab.get_token_from_index(x, namespace="yesno_labels") for x in yn_list] \
-                      for yn_list in output_dict.pop("yesno")]
+        yesno_tags = [[self.vocab.get_token_from_index(x, namespace="yesno_labels") for x in yn_list] for yn_list in output_dict.pop("yesno")]
         output_dict['yesno'] = yesno_tags
         return output_dict
 
