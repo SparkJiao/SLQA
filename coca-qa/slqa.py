@@ -1,7 +1,6 @@
 import logging
 import torch
 import numpy as np
-import overrides
 from torch.nn.functional import cross_entropy, nll_loss
 from typing import Optional, Dict, List, Any
 
@@ -11,7 +10,6 @@ from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder
 from allennlp.nn import RegularizerApplicator
 from allennlp.training.metrics import CategoricalAccuracy, BooleanAccuracy, SquadEmAndF1, Average
 from allennlp.nn import InitializerApplicator, util
-from models.fusion_layer import FusionLayer
 from allennlp.modules.input_variational_dropout import InputVariationalDropout
 
 from allennlp.tools import squad_eval

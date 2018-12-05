@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from torch.nn import Linear
 
 
 class Fusion(nn.Module):
@@ -26,6 +25,12 @@ class Gate(nn.Module):
 
 
 class FusionLayer(nn.Module):
+    """
+    vector based fusion
+    m(x, y) = W([x, y, x * y, x - y]) + b
+    g(x, y) = w([x, y, x * y, x - y]) + b
+    :returns g(x, y) * m(x, y) + (1 - g(x, y)) * x
+    """
     def __init__(self, input_dim):
         super(FusionLayer, self).__init__()
         self.linear_f = nn.Linear(input_dim * 4, input_dim, bias=True)

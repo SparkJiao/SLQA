@@ -11,7 +11,7 @@ from allennlp.data.dataset_readers.reading_comprehension import util
 from allennlp.data.token_indexers import SingleIdTokenIndexer, TokenIndexer
 from allennlp.data.tokenizers import Token, Tokenizer, WordTokenizer
 from allennlp.data.fields import Field, TextField, IndexField, \
-    MetadataField, LabelField, ListField, SequenceLabelField, ArrayField
+    MetadataField, LabelField, ListField
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
