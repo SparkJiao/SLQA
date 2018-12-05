@@ -7,9 +7,9 @@ from typing import Optional, Dict, List, Any
 
 from allennlp.models.model import Model
 from allennlp.data import Vocabulary
-from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder, TimeDistributed
-from allennlp.nn import RegularizerApplicator, InitializerApplicator
-from allennlp.training.metrics import CategoricalAccuracy, BooleanAccuracy, SquadEmAndF1
+from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder
+from allennlp.nn import RegularizerApplicator
+from allennlp.training.metrics import CategoricalAccuracy, BooleanAccuracy, SquadEmAndF1, Average
 from allennlp.nn import InitializerApplicator, util
 from models.fusion_layer import FusionLayer
 from allennlp.modules.input_variational_dropout import InputVariationalDropout
@@ -50,11 +50,14 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self.yesno_predictor = torch.nn.Linear(self._encoding_dim, 3)
         self.relu = torch.nn.ReLU()
 
+        self._max_span_length = 30
+
         self._span_start_accuracy = CategoricalAccuracy()
         self._span_end_accuracy = CategoricalAccuracy()
         self._span_accuracy = BooleanAccuracy()
         self._squad_metrics = SquadEmAndF1()
-
+        self._span_yesno_accuracy = CategoricalAccuracy()
+        self._official_f1 = Average()
         self._variational_dropout = InputVariationalDropout(dropout)
 
         self._loss = torch.nn.CrossEntropyLoss()
@@ -104,11 +107,14 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         repeated_encoded_passage = repeated_encoded_passage.view(total_qa_count,
                                                                  passage_length,
                                                                  self._encoding_dim)
+        repeated_pass_feat = (pass_feat.unsqueeze(1).repeat(1, max_qa_count, 1, 1)).view(total_qa_count,
+                                                                                         passage_length,
+                                                                                         40)
         encoded_question = self._variational_dropout(projected_question)
 
         # total_qa_count * max_q_len * passage_length
         # cnt * m * n
-        s = torch.bmm(encoded_question, repeated_encoded_passage)
+        s = torch.bmm(encoded_question, repeated_encoded_passage.transpose(2, 1))
         alpha = util.masked_softmax(s, question_mask.unsqueeze(2).expand(s.size()), dim=1)
         # cnt * n * h
         aligned_p = torch.bmm(alpha.transpose(2, 1), encoded_question)
@@ -122,21 +128,21 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         fused_q = self.fuse(encoded_question, aligned_q)
 
         # add manual features here
-        q_aware_p = self.projected_lstm(torch.cat([fused_p, pass_feat], dim=2))
+        q_aware_p = self.projected_lstm(torch.cat([fused_p, repeated_pass_feat], dim=2), repeated_passage_mask)
 
         # cnt * n * n
         self_p = torch.bmm(q_aware_p, q_aware_p.transpose(2, 1))
         for i in range(passage_length):
             self_p[:, i, i] = 0
-        lamb = util.masked_softmax(self_p, repeated_passage_mask.unsqueeze(1).expand(self_p.size(), dim=2))
+        lamb = util.masked_softmax(self_p, repeated_passage_mask.unsqueeze(1).expand(self_p.size()), dim=2)
         # cnt * n * h
         self_aligned_p = torch.bmm(lamb, q_aware_p)
 
         # cnt * n * h
         fused_self_p = self.fuse(q_aware_p, self_aligned_p)
-        contextual_p = self.contextual_layer_p(fused_self_p)
+        contextual_p = self.contextual_layer_p(fused_self_p, repeated_passage_mask)
 
-        contextual_q = self.contextual_layer_q(fused_q)
+        contextual_q = self.contextual_layer_q(fused_q, question_mask)
         # cnt * m
         gamma = util.masked_softmax(self.linear_self_align(contextual_q).squeeze(2), question_mask, dim=1)
         # cnt * h
@@ -157,7 +163,6 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         output_dict: Dict[str, Any] = {}
 
         # Compute the loss for training
-        # Compute the loss.
 
         if span_start is not None:
             loss = nll_loss(util.masked_log_softmax(span_start_logits, repeated_passage_mask), span_start.view(-1),
@@ -247,7 +252,6 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                 'end_acc': self._span_end_accuracy.get_metric(reset),
                 'span_acc': self._span_accuracy.get_metric(reset),
                 'yesno': self._span_yesno_accuracy.get_metric(reset),
-                'followup': self._span_followup_accuracy.get_metric(reset),
                 'f1': self._official_f1.get_metric(reset), }
 
     @staticmethod
