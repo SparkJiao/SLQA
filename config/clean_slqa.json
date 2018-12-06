@@ -1,0 +1,178 @@
+{
+  "dataset_reader": {
+    "type": "clean-reader",
+    "lazy": true,
+    "tokenizer": {
+      "type": "word",
+      "word_splitter": {
+        "type": "spacy",
+        "pos_tags": true,
+        "ner": true
+      }
+    },
+    "token_indexers": {
+      "tokens": {
+        "type": "single_id",
+        "lowercase_tokens": true
+      },
+      "elmo": {
+        "type": "elmo_characters"
+      },
+      "token_characters": {
+        "type": "characters",
+        "character_tokenizer": {
+          "byte_encoding": "utf-8",
+          "end_tokens": [
+            260
+          ],
+          "start_tokens": [
+            259
+          ]
+        }
+      },
+      "pos_tag": {
+        "type": "pos_tag"
+      },
+      "ner_tag": {
+        "type": "ner_tag"
+      }
+    }
+  },
+  "iterator": {
+    "type": "bucket",
+    "batch_size": 3,
+    "max_instances_in_memory": 3,
+    "sorting_keys": [
+      [
+        "question",
+        "num_fields"
+      ],
+      [
+        "passage",
+        "num_tokens"
+      ]
+    ]
+  },
+  "model": {
+    "type": "slqa",
+    "dropout": 0.4,
+    "initializer": [],
+    "phrase_layer": {
+      "type": "lstm",
+      "bidirectional": true,
+      "input_size": 1224,
+      "hidden_size": 100,
+      "num_layers": 1,
+      "dropout": 0.4
+    },
+    "projected_layer": {
+      "type": "lstm",
+      "bidirectional": true,
+      "input_size": 240,
+      "hidden_size": 100,
+      "num_layers": 1,
+      "dropout": 0.4
+    },
+    "contextual_passage": {
+      "type": "gru",
+      "bidirectional": true,
+      "input_size": 200,
+      "hidden_size": 100,
+      "num_layers": 1,
+      "dropout": 0.4
+    },
+    "contextual_question": {
+      "type": "gru",
+      "bidirectional": true,
+      "input_size": 200,
+      "hidden_size": 100,
+      "num_layers": 1,
+      "dropout": 0.4
+    },
+    "text_field_embedder": {
+      "tokens": {
+        "type": "embedding",
+//        "pretrained_file": "https://s3-us-west-2.amazonaws.com/allennlp/datasets/glove/glove.6B.100d.txt.gz",
+        "pretrained_file": "glove/glove.6B.100d.txt",
+        "embedding_dim": 100,
+        "trainable": false
+      },
+      "token_characters": {
+        "type": "character_encoding",
+        "dropout": 0.2,
+        "embedding": {
+          "embedding_dim": 20,
+          "num_embeddings": 262
+        },
+        "encoder": {
+          "type": "cnn",
+          "embedding_dim": 20,
+          "ngram_filter_sizes": [
+            5
+          ],
+          "num_filters": 100
+        }
+      },
+      "elmo": {
+        "type": "elmo_token_embedder",
+        "do_layer_norm": false,
+        "dropout": 0.2,
+        "options_file": "elmo/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json",
+        "weight_file": "elmo/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5"
+      },
+      "pos_tag": {
+        "type": "embedding",
+        "embedding_dim": 20,
+        "trainable": false
+      },
+      "ner_tag": {
+        "type": "embedding",
+        "embedding_dim": 20,
+        "trainable": false
+      },
+      "allow_unmatched_keys": true
+    }
+  },
+  "train_data_path": "https://nlp.stanford.edu/data/coqa/coqa-train-v1.0.json",
+  "validation_data_path": "https://nlp.stanford.edu/data/coqa/coqa-dev-v1.0.json",
+  "trainer": {
+    "cuda_device": 0,
+    "learning_rate_scheduler": {
+      "type": "reduce_on_plateau",
+      "factor": 0.5,
+      "mode": "max",
+      "patience": 3
+    },
+    "num_epochs": 30,
+    //    "optimizer": {
+    //      "type": "sgd",
+    //      "lr": 0.01,
+    //      "momentum": 0.9
+    //    },
+    "optimizer": {
+      "type": "adamax",
+      "lr": 2e-3,
+      "betas": [
+        0.9,
+        0.9
+      ]
+    },
+    "patience": 8,
+    "validation_metric": "+f1"
+  },
+  "validation_iterator": {
+    "type": "bucket",
+    "batch_size": 3,
+    "max_instances_in_memory": 32,
+    "sorting_keys": [
+      [
+        "question",
+        "num_fields"
+      ],
+      [
+        "passage",
+        "num_tokens"
+      ]
+    ]
+  }
+}

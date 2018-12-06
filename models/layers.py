@@ -31,6 +31,7 @@ class FusionLayer(nn.Module):
     g(x, y) = w([x, y, x * y, x - y]) + b
     :returns g(x, y) * m(x, y) + (1 - g(x, y)) * x
     """
+
     def __init__(self, input_dim):
         super(FusionLayer, self).__init__()
         self.linear_f = nn.Linear(input_dim * 4, input_dim, bias=True)
@@ -43,6 +44,7 @@ class FusionLayer(nn.Module):
         gated = self.sigmoid(self.linear_g(z))
         fusion = self.tanh(self.linear_f(z))
         return gated * fusion + (1 - gated) * x
+
 
 class BilinearSeqAtt(nn.Module):
     def __init__(self, input_dim1, input_dim2):
@@ -59,3 +61,14 @@ class BilinearSeqAtt(nn.Module):
         # b * len
         xWy = torch.bmm(y, xW.unsqueeze(2)).squeeze(2)
         return xWy
+
+
+class BilinearSelfAlign(nn.Module):
+    def __init__(self, input_dim):
+        super(BilinearSelfAlign, self).__init__()
+        self.linear = nn.Linear(input_dim, input_dim, bias=False)
+
+    def forward(self, x):
+        Wx = self.linear(x)
+        xWx = torch.bmm(x, Wx.transpose(2, 1))
+        return xWx

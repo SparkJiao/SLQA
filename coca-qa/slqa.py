@@ -14,7 +14,7 @@ from allennlp.modules.input_variational_dropout import InputVariationalDropout
 
 from allennlp.tools import squad_eval
 
-from models.layers import FusionLayer, BilinearSeqAtt
+from models.layers import FusionLayer, BilinearSeqAtt, BilinearSelfAlign
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -43,6 +43,7 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self.contextual_layer_p = contextual_passage
         self.contextual_layer_q = contextual_question
         self.linear_self_align = torch.nn.Linear(self._encoding_dim, 1)
+        self.bilinear_self_align = BilinearSelfAlign(self._encoding_dim0)
         self.bilinear_layer_s = BilinearSeqAtt(self._encoding_dim, self._encoding_dim)
         self.bilinear_layer_e = BilinearSeqAtt(self._encoding_dim, self._encoding_dim)
         self.yesno_predictor = torch.nn.Linear(self._encoding_dim, 3)
@@ -124,9 +125,10 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         q_aware_p = self.projected_lstm(torch.cat([fused_p, repeated_pass_feat], dim=2), repeated_passage_mask)
 
         # cnt * n * n
-        self_p = torch.bmm(q_aware_p, q_aware_p.transpose(2, 1))
-        for i in range(passage_length):
-            self_p[:, i, i] = 0
+        # self_p = torch.bmm(q_aware_p, q_aware_p.transpose(2, 1))
+        self_p = self.bilinear_self_align(q_aware_p)
+        # for i in range(passage_length):
+        #     self_p[:, i, i] = 0
         lamb = util.masked_softmax(self_p, repeated_passage_mask.unsqueeze(1).expand(self_p.size()), dim=2)
         # cnt * n * h
         self_aligned_p = torch.bmm(lamb, q_aware_p)
