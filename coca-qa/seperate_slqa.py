@@ -21,11 +21,13 @@ from models.layers import FusionLayer, BilinearSeqAtt, BilinearSelfAlign
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
-@Model.register("slqa")
+@Model.register("slqa-s")
 class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
 
     def __init__(self, vocab: Vocabulary,
-                 text_field_embedder: TextFieldEmbedder,
+                 elmo_embedder: TextFieldEmbedder,
+                 tokens_embedder: TextFieldEmbedder,
+                 features_embedder: TextFieldEmbedder,
                  phrase_layer: Seq2SeqEncoder,
                  projected_layer: Seq2SeqEncoder,
                  contextual_passage: Seq2SeqEncoder,
@@ -36,7 +38,10 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                  ):
 
         super(MultiGranularityHierarchicalAttentionFusionNetworks, self).__init__(vocab, regularizer)
-        self._text_field_embedder = text_field_embedder
+        # self._text_field_embedder = text_field_embedder
+        self.elmo_embedder = elmo_embedder
+        self.tokens_embedder = tokens_embedder
+        self.features_embedder = features_embedder
         self._phrase_layer = phrase_layer
         self._encoding_dim = self._phrase_layer.get_output_dim()
         self.projected_layer = torch.nn.Linear(self._encoding_dim + 1024, self._encoding_dim)
@@ -79,15 +84,18 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         total_qa_count = batch_size * max_qa_count
         qa_mask = torch.ge(yesno_list, 0).view(total_qa_count)
 
-        embedded_question = self._text_field_embedder(question, num_wrapping_dims=1)
-        # total_qa_count * max_q_len * encoding_dim
-        embedded_question = embedded_question.reshape(total_qa_count, max_q_len, self._text_field_embedder.get_output_dim())
-        embedded_passage = self._text_field_embedder(passage)
+        # GloVe and simple cnn char embedding, embedding dim = 100 + 100 = 200
+        word_emb_ques = self.tokens_embedder(question, num_wrapping_dims=1).reshape(total_qa_count, max_q_len, self.tokens_embedder.get_output_dim())
+        word_emb_pass = self.tokens_embedder(passage)
 
-        # split the embedded tensors to get the word embedding and char embedding, elmo embedding and features embedding
-        word_emb_ques, elmo_ques, ques_feat = torch.split(embedded_question, [200, 1024, 40], dim=2)
-        word_emb_pass, elmo_pass, pass_feat = torch.split(embedded_passage, [200, 1024, 40], dim=2)
-        # word embedding and char embedding
+        # Elmo embedding, embedding dim = 1024
+        elmo_ques = self.elmo_embedder(question, num_wrapping_dims=1).reshape(total_qa_count, max_q_len, self.elmo_embedder.get_output_dim())
+        elmo_pass = self.elmo_embedder(passage)
+
+        # Passage features embedding, embedding dim = 20 + 20 = 40
+        pass_feat = self.features_embedder(passage)
+
+        # GloVe + cnn + Elmo
         embedded_question = self._variational_dropout(torch.cat([word_emb_ques, elmo_ques], dim=2))
         embedded_passage = self._variational_dropout(torch.cat([word_emb_pass, elmo_pass], dim=2))
         passage_length = embedded_passage.size(1)
@@ -99,9 +107,11 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         repeated_passage_mask = passage_mask.unsqueeze(1).repeat(1, max_qa_count, 1)
         repeated_passage_mask = repeated_passage_mask.view(total_qa_count, passage_length)
 
+        # Concatenate Elmo after encoded passage
         encode_passage = self._phrase_layer(embedded_passage, passage_mask)
         projected_passage = self.relu(self.projected_layer(torch.cat([encode_passage, elmo_pass], dim=2)))
 
+        # Concatenate Elmo after encoded question
         encode_question = self._phrase_layer(embedded_question, question_mask)
         projected_question = self.relu(self.projected_layer(torch.cat([encode_question, elmo_ques], dim=2)))
 

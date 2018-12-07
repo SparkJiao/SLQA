@@ -54,8 +54,8 @@
     ]
   },
   "model": {
-    "type": "slqa",
-    "dropout": 0.4,
+    "type": "slqa-s",
+    "dropout": 0.2,
     "initializer": [],
     "phrase_layer": {
       "type": "lstm",
@@ -63,7 +63,7 @@
       "input_size": 1224,
       "hidden_size": 100,
       "num_layers": 1,
-      "dropout": 0.4
+      "dropout": 0.2
     },
     "projected_layer": {
       "type": "lstm",
@@ -71,7 +71,7 @@
       "input_size": 240,
       "hidden_size": 100,
       "num_layers": 1,
-      "dropout": 0.4
+      "dropout": 0.2
     },
     "contextual_passage": {
       "type": "gru",
@@ -79,7 +79,7 @@
       "input_size": 200,
       "hidden_size": 100,
       "num_layers": 1,
-      "dropout": 0.4
+      "dropout": 0.2
     },
     "contextual_question": {
       "type": "gru",
@@ -87,12 +87,22 @@
       "input_size": 200,
       "hidden_size": 100,
       "num_layers": 1,
-      "dropout": 0.4
+      "dropout": 0.2
     },
-    "text_field_embedder": {
+    "elmo_embedder": {
+      "elmo": {
+        "type": "elmo_token_embedder",
+        "do_layer_norm": false,
+        "dropout": 0.2,
+        "options_file": "elmo/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json",
+        "weight_file": "elmo/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5"
+      },
+      "allow_unmatched_keys": true
+    },
+    "tokens_embedder": {
       "tokens": {
         "type": "embedding",
-//        "pretrained_file": "https://s3-us-west-2.amazonaws.com/allennlp/datasets/glove/glove.6B.100d.txt.gz",
+        //        "pretrained_file": "https://s3-us-west-2.amazonaws.com/allennlp/datasets/glove/glove.6B.100d.txt.gz",
         "pretrained_file": "glove/glove.6B.100d.txt",
         "embedding_dim": 100,
         "trainable": false
@@ -113,13 +123,9 @@
           "num_filters": 100
         }
       },
-      "elmo": {
-        "type": "elmo_token_embedder",
-        "do_layer_norm": false,
-        "dropout": 0.2,
-        "options_file": "elmo/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json",
-        "weight_file": "elmo/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5"
-      },
+      "allow_unmatched_keys": true
+    },
+    "features_embedder": {
       "pos_tag": {
         "type": "embedding",
         "embedding_dim": 20,
