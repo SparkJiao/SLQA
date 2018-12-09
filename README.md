@@ -12,7 +12,7 @@ First you should install `allennlp` and make sure you have downloaded the `elmo`
 `mkdir glove`  
 Then for train, run:  
 `allennlp train config/seperate_slqa.json -s output_dir --include-package coca-qa`  
-The parameters for the model you can see `config/seperate_slqa.json`. I recommend you to learn how to use `allennlp`. It's very easy and useful.
+To modified the parameters for the model, you can see `config/seperate_slqa.json`. I recommend you to learn how to use `allennlp`. It's very easy and useful.
 
 
 ### update:
@@ -23,8 +23,8 @@ The parameters for the model you can see `config/seperate_slqa.json`. I recommen
 - It seems that the performance is not good enough.
 
 ### update 12.7:  
-- The `text_field_embedder` receive a list of `token embedder` and concatenate their output in an arbitrary order. So if we use `split` wo can't make sure the part with dimension of 1024 is the output of `elmo_token_embedder`. As a result, I split it as three seperate `text_field_embedder`s.
-- The fuse function in the paper is wrote as the same one. But I think the fuse layers of passage, question and self-aligned passage representation use different weight and they should not share gradient. So I use three different fuse layer.
+- The `text_field_embedder` receives a list of `token embedder`s and concatenates their output in an arbitrary order. So if we use `split` wo can't make sure the part with dimension of 1024 is the output of `elmo_token_embedder`. As a result, I split it as three seperate `text_field_embedder`s.
+- The fuse function in the paper is wrote as the same one. But I think the fuse layers of passage, question and self-aligned passage representation use different weight and they should not share gradients. So I use three different fuse layers.
 - Change the self attention function from `D = AA^T` to `D = AWA^T`
 
 ### update 12.9:  
@@ -33,5 +33,6 @@ I think this version will be the final. Since I don't know how to reach the perf
 
 ### TODO:  
 - Try to have a better performance.
+- Add more manual features.
 - Test performance with previous information.
 - Test performance on SQuAD1.1.
