@@ -2,8 +2,12 @@
 
 Multi-Granularity Hierarchical Attention Fusion Networks
 for Reading Comprehension and Question Answering    
+
 If anyone would love to test the performance on SQuAD, please tell me the final score. 
-You just need to change the coca_reader.py to read in dataset of SQuAD.
+You just need to change the coca_reader.py to read in dataset of SQuAD.  
+
+Paper: [http://www.aclweb.org/anthology/P18-1158](http://www.aclweb.org/anthology/P18-1158)  
+Allennlp:[https://github.com/allenai/allennlp](https://github.com/allenai/allennlp)  
 
 ### Tutorial
 
