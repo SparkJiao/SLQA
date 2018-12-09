@@ -7,7 +7,6 @@ from typing import Optional, Dict, List, Any
 from allennlp.models.model import Model
 from allennlp.data import Vocabulary
 from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder
-from allennlp.modules.matrix_attention.linear_matrix_attention import LinearMatrixAttention
 from allennlp.modules.matrix_attention.bilinear_matrix_attention import BilinearMatrixAttention
 from allennlp.nn import RegularizerApplicator
 from allennlp.training.metrics import CategoricalAccuracy, BooleanAccuracy, SquadEmAndF1, Average
@@ -16,7 +15,7 @@ from allennlp.modules.input_variational_dropout import InputVariationalDropout
 
 from allennlp.tools import squad_eval
 
-from models.layers import FusionLayer, BilinearSeqAtt, BilinearSelfAlign
+from models.layers import FusionLayer, BilinearSeqAtt, FeedForward
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -38,7 +37,6 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
                  ):
 
         super(MultiGranularityHierarchicalAttentionFusionNetworks, self).__init__(vocab, regularizer)
-        # self._text_field_embedder = text_field_embedder
         self.elmo_embedder = elmo_embedder
         self.tokens_embedder = tokens_embedder
         self.features_embedder = features_embedder
@@ -52,12 +50,11 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         self.contextual_layer_p = contextual_passage
         self.contextual_layer_q = contextual_question
         self.linear_self_align = torch.nn.Linear(self._encoding_dim, 1)
-        # self.bilinear_self_align = BilinearSelfAlign(self._encoding_dim)
         # self._self_attention = LinearMatrixAttention(self._encoding_dim, self._encoding_dim, 'x,y,x*y')
         self._self_attention = BilinearMatrixAttention(self._encoding_dim, self._encoding_dim)
         self.bilinear_layer_s = BilinearSeqAtt(self._encoding_dim, self._encoding_dim)
         self.bilinear_layer_e = BilinearSeqAtt(self._encoding_dim, self._encoding_dim)
-        self.yesno_predictor = torch.nn.Linear(self._encoding_dim, 3)
+        self.yesno_predictor = FeedForward(self._encoding_dim, self._encoding_dim, 3)
         self.relu = torch.nn.ReLU()
 
         self._max_span_length = 30
@@ -137,14 +134,12 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
         fused_q = self.fuse_q(encoded_question, aligned_q)
 
         # add manual features here
-        q_aware_p = self.projected_lstm(torch.cat([fused_p, repeated_pass_feat], dim=2), repeated_passage_mask)
+        q_aware_p = self._variational_dropout(self.projected_lstm(torch.cat([fused_p, repeated_pass_feat], dim=2), repeated_passage_mask))
 
         # cnt * n * n
         # self_p = torch.bmm(q_aware_p, q_aware_p.transpose(2, 1))
         # self_p = self.bilinear_self_align(q_aware_p)
         self_p = self._self_attention(q_aware_p, q_aware_p)
-        # for i in range(passage_length):
-        #     self_p[:, i, i] = 0
         mask = repeated_passage_mask.reshape(total_qa_count, passage_length, 1) * repeated_passage_mask.reshape(total_qa_count, 1, passage_length)
         self_mask = torch.eye(passage_length, passage_length, device=self_p.device)
         self_mask = self_mask.reshape(1, passage_length, passage_length)
@@ -157,11 +152,11 @@ class MultiGranularityHierarchicalAttentionFusionNetworks(Model):
 
         # cnt * n * h
         fused_self_p = self.fuse_s(q_aware_p, self_aligned_p)
-        # contextual_p = self._variational_dropout(self.contextual_layer_p(fused_self_p, repeated_passage_mask))
-        contextual_p = self.contextual_layer_p(fused_self_p, repeated_passage_mask)
+        contextual_p = self._variational_dropout(self.contextual_layer_p(fused_self_p, repeated_passage_mask))
+        # contextual_p = self.contextual_layer_p(fused_self_p, repeated_passage_mask)
 
-        # contextual_q = self._variational_dropout(self.contextual_layer_q(fused_q, question_mask))
-        contextual_q = self.contextual_layer_q(fused_q, question_mask)
+        contextual_q = self._variational_dropout(self.contextual_layer_q(fused_q, question_mask))
+        # contextual_q = self.contextual_layer_q(fused_q, question_mask)
         # cnt * m
         gamma = util.masked_softmax(self.linear_self_align(contextual_q).squeeze(2), question_mask, dim=1)
         # cnt * h

@@ -72,3 +72,14 @@ class BilinearSelfAlign(nn.Module):
         Wx = self.linear(x)
         xWx = torch.bmm(x, Wx.transpose(2, 1))
         return xWx
+
+class FeedForward(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(FeedForward, self).__init__()
+        self.linear1 = nn.Linear(input_dim, hidden_dim)
+        self.linear2 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x):
+        x_pro = self.linear1(x)
+        y = self.linear2(x_pro)
+        return y
