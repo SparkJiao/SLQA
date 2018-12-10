@@ -34,6 +34,9 @@ To modified the parameters for the model, you can see `config/seperate_slqa.json
 ### update 12.9:  
 I think this version will be the final. Since I don't know how to reach the performance mentioned in paper where it's good than bidaf with self-attention and elmo.  The final F1 score on CoQA is 61.879 where bidaf++ can reach 65.  Besides, I didn't use any previous questions and answers. May be the performance with historical information is good enough but I have no time to test now.
 
+### update 12.10:
+F1 score while training:
+![63.81](img/TIM截图20181210100021.png)
 
 ### TODO:  
 - Try to have a better performance.
