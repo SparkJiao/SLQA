@@ -39,6 +39,7 @@ F1 score while training:
 ![63.81](img/TIM截图20181210100021.png)
 
 ### TODO:  
+- The module for predicting the question as yes/no/not is not good enough, and this may have a bad influence on predicting the start scores and end scores, so we need to fix it. I will consider using a bi-linear function on question vector and learned self-attentioned passage vector to generate the answer choice logits.
 - Try to have a better performance.
 - Add more manual features.
 - Test performance with previous information.
