@@ -18,6 +18,11 @@ Then for train, run:
 `allennlp train config/seperate_slqa.json -s output_dir --include-package coca-qa`  
 To modified the parameters for the model, you can see `config/seperate_slqa.json`. I recommend you to learn how to use `allennlp`. It's very easy and useful.
 
+### Note
+
+The clean for useless config file and further improvement won't be added util Sep. 2019.
+
+For performance on SQuAD1.1 and further improvement, please see the issue page.
 
 ### update:
 - Rewrite the model using allennlp. It seems that it would run successfully. I'm waiting for the performance. 
