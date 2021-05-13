@@ -7,20 +7,25 @@ If anyone would love to test the performance on SQuAD, please tell me the final 
 You just need to change the coca_reader.py to read in dataset of SQuAD.  
 
 Paper: [http://www.aclweb.org/anthology/P18-1158](http://www.aclweb.org/anthology/P18-1158)  
-Allennlp:[https://github.com/allenai/allennlp](https://github.com/allenai/allennlp)  
+Allennlp: [https://github.com/allenai/allennlp](https://github.com/allenai/allennlp)  
 
 ### Tutorial
 
 First you should install `allennlp` and make sure you have downloaded the `elmo` and `glove`. You will find the version information in `config/seperate_slqa.json`. You could also use `elmo` by url, please turn to allennlp tutorials for help.  
-`mkdir elmo`  
-`mkdir glove`  
+```
+cd SLQA
+mkdir elmo  
+mkdir glove
+```  
 Then for train, run:  
-`allennlp train config/seperate_slqa.json -s output_dir --include-package coca-qa`  
-To modified the parameters for the model, you can see `config/seperate_slqa.json`. I recommend you to learn how to use `allennlp`. It's very easy and useful.
+```
+allennlp train config/seperate_slqa.json -s output_dir --include-package coca-qa
+```
+To modified the parameters for the model, you can see `config/seperate_slqa.json`.
 
 ### Note
 
-The clean for useless config file and further improvement won't be added util Sep. 2019.
+The clean for useless config file and further improvement are pending.
 
 For performance on SQuAD1.1 and further improvement, please see the issue page.
 
